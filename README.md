@@ -1,196 +1,109 @@
-# Luau Tool
+# Lua Tool - Luau Code Processor
 
-Luau用のコード操作ツール。ASTベースのミニファイアー、フォーマッター、リンターを提供します。
+Luauコード処理ツール。ASTベースの解析を用いて、圧縮・フォーマット・リントを行います。Roblox開発向けの簡易サポートも含みます。
 
-## 機能
+## 概要
 
-### 1. フォーマッター
-コードを読みやすく整形します
-- 適切なインデント
-- 改行の配置
-- スペース管理
+- 圧縮 (compress): 行単位でコメントと空行を削除し、残ったステートメントをセミコロン (`;`) で結合して1行化します（例: `if true then; print(1); end`）。
+- フォーマット (format): セミコロン区切りやキーワードを解析して改行とインデントを復元し、読みやすいコードに戻します。
+- リント (lint): 未終了ブロックなどの簡易構文チェックを実行します。
 
-```bash
-luau-tool format code.luau
-luau-tool format code.luau -o formatted.luau
-```
+## 必要環境
 
-### 2. ミニファイアー  
-コードを圧縮します
-- ローカル変数名の短縮化 (a, b, c... など)
-- グローバル変数は保持
-- コードサイズを削減
-
-```bash
-luau-tool minify code.luau
-luau-tool minify code.luau -o minified.luau
-```
-
-### 3. リンター
-エラーと問題を検出します
-- 未定義の変数を検出
-- 構文エラーを報告
-- 潜在的な問題を指摘
-
-```bash
-luau-tool lint code.luau
-```
-
-### 4. コード分析
-AST と詳細なエラー情報を表示
-
-```bash
-luau-tool analyze code.luau
-```
+- Lua 5.4 (`lua54` コマンドが利用可能であること)
 
 ## インストール
 
 ```bash
-npm install
-npm run build
+git clone <repository>
+cd lua-tool
 ```
 
-## ビルド
+## CLI 使用方法
+
+- 圧縮（デフォルト出力：`<basename>.out.lua`）:
 
 ```bash
-npm run build
+lua54 cli.lua compress file.lua
 ```
 
-開発モード（ファイル変更を監視）:
-```bash
-npm run dev
-```
-
-## 使用方法
-
-### CLI コマンド
+- 圧縮（出力ファイル指定）:
 
 ```bash
-# フォーマット
-luau-tool format input.luau
-
-# ミニファイ
-luau-tool minify input.luau -o output.luau
-
-# リント
-luau-tool lint input.luau
-
-# 分析
-luau-tool analyze input.luau
+lua54 cli.lua compress file.lua -o out.lua
 ```
 
-### TypeScript APIとして使用
+- フォーマット（デフォルト出力：`<basename>.out.lua`）:
 
-```typescript
-import { LuauTool } from './src/index';
-
-const tool = new LuauTool();
-
-// コードをフォーマット
-const result = tool.formatCode(code);
-if (result.success) {
-  console.log(result.result);
-}
-
-// コードをミニファイ
-const result = tool.minifyCode(code);
-if (result.success) {
-  console.log(result.result);
-}
-
-// コードをリント
-const result = tool.lintCode(code);
-if (result.success) {
-  result.errors?.forEach(error => {
-    console.log(`${error.code}: ${error.message}`);
-  });
-}
-
-// 詳細分析
-const result = tool.analyzeCode(code);
-console.log(result.ast);
-console.log(result.errors);
+```bash
+lua54 cli.lua format file.lua
 ```
 
-## プロジェクト構造
+- フォーマット（出力ファイル指定）:
+
+```bash
+lua54 cli.lua format file.lua -o formatted.lua
+```
+
+- リント:
+
+```bash
+lua54 cli.lua lint file.lua
+```
+
+オプション:
+
+- `--indent-size <n>`: インデント幅（デフォルト2）
+- `--indent-char <tab|space>`: インデント文字（デフォルトはタブ）
+- `--lang <code>`: メッセージの言語（`en` または `ja`、デフォルト `en`）
+
+```bash
+lua54 cli.lua compress file.lua --lang ja
+lua54 cli.lua format file.lua --lang ja
+```
+
+## 実装のポイント
+
+- `compress` はソースの各行をトリムしてコメントを削除し、空でない行を `; ` で結合します。これによりステートメントが1行にまとまり、配布・最小化などに使えます。
+- `format` はトークン化した結果を使い、キーワード（`if`, `then`, `else`, `end`, `for` 等）とセミコロンを基に改行・インデントを復元します。
+- `linter` は未閉ブロック（`if` に対応する `end` がない等）を検出します。
+
+## プロジェクト構成
 
 ```
 src/
-├── tokenizer.ts    # トークン定義
-├── lexer.ts       # 字句解析（トークン生成）
-├── ast.ts         # AST ノード定義
-├── parser.ts      # 構文解析（AST 生成）
-├── formatter.ts   # コードフォーマッター
-├── minifier.ts    # コードミニファイアー
-├── linter.ts      # エラー検出
-├── index.ts       # メインツール（パブリック API）
-└── cli.ts         # コマンドラインインターフェース
+├── main.lua          メインエントリーポイント（ファイル/文字列処理）
+├── ast.lua           トークン化と簡易ASTのエントリ
+├── formatter.lua     フォーマッター（圧縮された入力から復元可能）
+├── compressor.lua    圧縮（行→セミコロン結合）
+├── linter.lua        簡易リント/エラー検出
+├── roblox.lua        Roblox API定義（補完/参照用の簡易リスト）
+└── utils.lua         ユーティリティ関数
+
+tests/
+└── test.lua          テストスイート（基本機能の検証）
+
+examples/
+├── compress.lua      圧縮の例
+├── format.lua        フォーマットの例
+└── lint.lua          リントの例
 ```
 
-## 対応している Luau 構文
+## 使い方の例
 
-### ステートメント
-- `local` 変数宣言
-- `function` 関数定義
-- `if/then/elseif/else/end` 条件分岐
-- `while/do/end` ループ
-- `for/do/end` ループ
-- `return` リターン
-- `break` ブレーク
+- 圧縮してからフォーマットで復元するワークフロー:
 
-### 式
-- 二項演算子 `+`, `-`, `*`, `/`, `%`, `^`, `..`, `==`, `~=`, `<`, `<=`, `>`, `>=`, `and`, `or`
-- 単項演算子 `not`, `-`
-- 関数呼び出し
-- テーブルアクセス `.`、`[]`
-- テーブル構築 `{}`
-- リテラル（数値、文字列、boolean、nil）
-
-## サンプル
-
-### フォーマット例
-
-入力:
-```lua
-local function add(a,b)
-return a+b
-end
-local result=add(2,3)
-print(result)
+```bash
+lua54 cli.lua compress script.lua        # script.lua を圧縮して script.out.lua に出力
+lua54 cli.lua format script.out.lua -o script.lua    # 圧縮済みを整形して script.lua に復元
 ```
 
-出力:
-```lua
-local function add(a, b)
-  return a + b
-end
-local result = add(2, 3)
-print(result)
-```
+## 次の改善候補
 
-### ミニファイ例
+- 括弧や引数内のスペース規則の厳密化（例: `print("a")` のような自動修正）
+- 複数行/ブロックコメントや複雑な式の扱いを強化する完全ASTパーサ
+- Roblox API の型注釈や補完データを拡充
 
-入力:
-```lua
-local function greet(name)
-  print("Hello, " .. name)
-end
-local message = greet("World")
-```
-
-出力:
-```lua
-function greet(a)
-  print("Hello, " .. a)
-end
-local b = greet("World")
-```
-
-## TODO
-
-- [ ] より詳細なエラー報告
-- [ ] マルチバイト文字のサポート改善
-- [ ] パフォーマンス最適化
-- [ ] 包括的なテストスイート
-- [ ] CLI の拡張機能
-- [ ] ソースマップの生成
+---
+更新: CLIでの上書き動作と、圧縮がセミコロン結合である点を反映しました。
+更新: 出力ファイル名を `<basename>.out<ext>` に変更、`--lang ja` で日本語メッセージに対応しました。
