@@ -17,11 +17,11 @@ Luauコード処理ツール。トークンベースの解析を用いて、圧�
 ### 修正・変換操作（4つ）
 
 - **fixcode**（自動修正）: 
-  - `if`、`elseif`、`function`、`while`、`for`、`repeat` などの未終了ブロックを自動検出
-  - 不足している `end` / `until` を自動追加
-  - 不足している `then`（`if` / `elseif` の後）を自動補完
-  - 不足している `do`（`while` / `for` の後）を自動補完
-  - **新機能**: 余分な `end` を自動削除（既に閉じられているコードをシミュレートして修正をリセット）
+  - 構文修正: 関数/呼び出しの前の余分なスペースを削除
+  - カンマ後にスペースを追加（テーブルと関数引数）
+  - 複数の連続スペースを単一スペースに正規化
+  - **重要**: 元のインデント（タブ・スペース）を完全に保持
+  - 行ベース処理により、実行中にインデント構造を損傷しません
   - 修正内容を修正ログで表示
 
 - **local**（ローカル変数分析）: ソース内のグローバルスコープにある `local` 宣言の数と変数名をリスト表示します。
@@ -157,69 +157,65 @@ if x > 0 then;print("positive");end
 
 ### 2. fixcode（自動修正）
 
-入力ファイル `broken.lua`:
+入力ファイル `style.lua`:
 ```lua
-function processData(data)
-    if data == nil
-        print("Error")
-        return
-    elseif #data > 0
-        for i, v in ipairs(data) do
-            if v > 0
-                print(v)
+function test  (x)
+	if x > 0  then
+		print(x,y,z)
+		return
+	end
+end
+
+local data = {1,2,3}
 ```
 
 実行：
 ```bash
-lua54 cli.lua fixcode broken.lua
+lua54 cli.lua fixcode style.lua
 ```
 
-出力ファイル `broken.out.lua` と修正ログ:
+出力ファイル `style.out.lua` と修正ログ:
 ```
 [FIXES APPLIED]
-[FIX] line 2: added 'then' after 'if'
-[FIX] line 5: added 'then' after 'elseif'
-[FIX] line 8: added 'then' after 'if'
+[FIX] line 1: removed space before '('
+[FIX] line 2: normalized multiple spaces
+[FIX] line 3: added space after comma
 
-[STATS] Lines: 10, Tokens: 56, Bytes: 180
+[STATS] Lines: 9, Tokens: 48, Bytes: 110
+```
+
+出力結果：
+```lua
+function test(x)
+	if x > 0 then
+		print(x, y, z)
+		return
+	end
+end
+
+local data = {1, 2, 3}
 ```
 
 #### fixcode の内部処理
 
-fixcode は3つのパスで処理します：
+fixcode は行ベース処理により、元のインデント構造を完全に保持しながら、以下の構文修正を実行します：
 
-**Pass 1: ブロック追跡**
-- `if`, `elseif`, `function`, `while`, `for`, `repeat`, `do` の開始を検出
-- 対応する `end` や `until` で閉鎖
-- ネストされたブロックをスタック管理
-- 処理後、未閉鎖ブロックのスタックを取得
+**修正1: 関数/呼び出しの前のスペース削除**
+- `function name (` → `function name(` に変換
+- `print (x)` → `print(x)` に変換
 
-**Pass 2: キーワード補完**
-- `if` / `elseif` の後に `then` がなければ追加
-- `while` / `for` の後に `do` がなければ追加
-- 不足している `end` キーワードを追加
+**修正2: カンマ後スペース追加**
+- `{1,2,3}` → `{1, 2, 3}` に変換
+- `func(a,b,c)` → `func(a, b, c)` に変換
 
-**Pass 3: 余分な `end` 削除**
-- トークン再カウント：開き括弧（`if`, `while`, `for`, `function`, `repeat`, `do`）をカウント
-- 閉じ括弧（`end`, `until`）をカウント
-- **特別処理**: `for...do` または `while...do` の場合、`do` は開き括弧としてカウント**しない**（1つのブロックだから）
-- 閉じ括弧が開き括弧より多い場合、末尾から余分な `end` を削除
-- 削除されたキーワードを修正ログに記録
+**修正3: 複数スペース正規化**
+- `x  +  y` → `x + y` に変換
+- タブ・インデントはそのまま保持
 
-例：
-```lua
--- Pass 3 で検出される例
-function test()  -- function = 1 opener
-    if x then  -- if = 2 openers, then = 補完
-        for i=1,10 do  -- for = 3 openers, do は part of for なのでカウントしない
-            print(i)
-        end  -- 1 closer (1st for)
-    end  -- 2nd closer (if)
-end  -- 3rd closer (function)
-end  -- 4th closer = **余分** → 削除
-
--- 結果: 3 openers vs 4 closers → 1つ削除
-```
+**重要な特徴**
+- 各行のインデント（先頭のスペース/タブ）を完全に保持
+- 行の内容部分のみをトークン化・修正
+- 修正後に完全に再構築しないため、インデント破損なし
 
 ### 3. local（ローカル変数分析）
 
